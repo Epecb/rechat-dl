@@ -16,7 +16,15 @@ rechat-dl requires version 2.7+ of the Python interpreter. Its only dependency i
     	if not set, it's rechat-{VOD-ID}.json
 
 ## Output
-The outputted .json file contains a json array, the first element of which is the [VOD metadata](https://github.com/justintv/Twitch-API/blob/master/v3_resources/videos.md#get-videosid) (creation time, title, description, ...), followed by the Chat Replay messages. There's no documentation for the Chat Replay API yet, but its output is very similiar to the [IRC interface](https://github.com/justintv/Twitch-API/blob/master/IRC.md#privmsg).
+This version of rechat-dl outputs the messages in a human readable format to a .txt file. The format of the chat messages is as follows: 
+
+`[<timestamp>](<Mod/Sub/Bit>)|<Username>: <Message>\n`
+
+Example:
+```
+[00:00:42](MSb)|User1: Morning @User2
+[00:01:00]( Sb)|User2: Heellooo 
+```
 
 This tool only downloads the chat messages, but doesn't offer a way to view them in real-time alongside a VOD.
 
