@@ -25,7 +25,7 @@ messages = []
 cid = "isaxc3wjcarzh4vgvz11cslcthw0gw"
 vod_info = requests.get("https://api.twitch.tv/kraken/videos/v" + sys.argv[1], headers={"Client-ID": cid}).json()
 
-file_name = "rechat-" + sys.argv[1] + ".json"
+file_name = "rechat-" + sys.argv[1] + ".txt"
 if len(sys.argv) == 3:
    file_name = sys.argv[2] 
 
@@ -66,10 +66,45 @@ while response == None or '_next' in response:
         sys.exit("max retries exceeded.")
 
 print()
+print("Making file readable for hoomans...")
+
+def convert(seconds):
+    m, s = divmod(seconds, 60)
+    h, m = divmod(m, 60)
+    stamp = "{}:{}:{}".format('%02d' % math.floor(h),'%02d' % math.floor(m),'%02d' % math.floor(s))
+    return stamp
+
+def makeReadable(message):
+    if 'commenter' in message:
+        badges = "({}{}{})"
+        mod = ' '
+        sub = ' '
+        bit = ' '
+        if 'user_badges' in message['message']:
+            for badge in message['message']['user_badges']:
+                if badge['_id'] == 'bits':
+                    bit = 'b'
+                if badge['_id'] == 'subscriber':
+                    sub = 'S'
+                if badge['_id'] == 'moderator':
+                    mod = 'M'
+        badges = badges.format(mod,sub,bit)
+
+        return "[{}]{}|{}: {}\n".format(convert(message['content_offset_seconds']),badges, message['commenter']['display_name'], message['message']['body'])
+
+    else:
+        return ''
+
+
 print("saving to " + file_name)
 
-f = open(file_name, "w")
-f.write(json.dumps(messages))
-f.close()
+with open(file_name, 'w', encoding='utf-8') as f:
+
+    for message in messages:
+        readable_message = makeReadable(message)
+        f.write(readable_message)
+
+
+    f.close()
 
 print("done!")
