@@ -8,6 +8,7 @@
 import sys
 import time
 import json
+import math
 import argparse
 import requests
 
@@ -29,6 +30,47 @@ def progress(count, total, status=''):
 
     sys.stdout.write('[%s] %s%s ...%s\r' % (pbar, percents, '%', status))
     sys.stdout.flush()
+
+
+def convert(seconds):
+    '''
+    convert time
+    '''
+
+    m, s = divmod(seconds, 60)
+    h, m = divmod(m, 60)
+    stamp = "{}:{}:{}".format('%02d' % math.floor(
+        h), '%02d' % math.floor(m), '%02d' % math.floor(s))
+    return stamp
+
+
+def makereadable(message):
+    '''
+    convert message
+    '''
+
+    if 'commenter' in message:
+        badges = "({}{}{})"
+        mod = ' '
+        sub = ' '
+        bit = ' '
+        if 'user_badges' in message['message']:
+            for badge in message['message']['user_badges']:
+                if badge['_id'] == 'bits':
+                    bit = 'b'
+                if badge['_id'] == 'subscriber':
+                    sub = 'S'
+                if badge['_id'] == 'moderator':
+                    mod = 'M'
+        badges = badges.format(mod, sub, bit)
+
+        return "[{}]{}|{}: {}\n".format(
+            convert(message['content_offset_seconds']), badges,
+            message['commenter']['display_name'],
+            message['message']['body'])
+
+    else:
+        return ''
 
 
 def download(vod_id, file_name):
@@ -97,10 +139,17 @@ def download(vod_id, file_name):
             response['comments'])-1]["content_offset_seconds"]
         progress(comment_offset, video_length, status="receiving...")
 
-    print("\nsaving to " + file_name)
+    print("\nsaving to " + file_name + ".json")
 
-    with open(file_name, "w") as save_file:
+    with open(file_name + ".json", "w") as save_file:
         save_file.write(json.dumps(messages))
+
+    print("saving to " + file_name + ".txt")
+
+    with open(file_name + ".txt", 'w', encoding='utf-8') as save_file:
+        for message in messages:
+            readable_message = makereadable(message)
+            save_file.write(readable_message)
 
     print("done!")
 
@@ -113,9 +162,9 @@ if __name__ == '__main__':
     ''')
     PARSER.add_argument('file_name', metavar='FILE', nargs='?', help='''
     FILE (optional): the file the chat messages will be saved into.
-    if not set, it's rechat-{VOD-ID}.json
+    if not set, it's rechat-{VOD-ID}.json and rechat-{VOD-ID}.txt
     ''')
     ARGS = PARSER.parse_args(args=None if len(sys.argv) > 1 else ['--help'])
-    ARGS.file_name = ("rechat-" + ARGS.vod_id +
-                      ".json") if ARGS.file_name is None else ARGS.file_name
+    ARGS.file_name = (
+        "rechat-" + ARGS.vod_id) if ARGS.file_name is None else ARGS.file_name
     download(ARGS.vod_id, ARGS.file_name)
