@@ -1,75 +1,121 @@
-from __future__ import print_function
+#!/usr/bin/env python3
+'''
+    rechat-dl is a simple command-line tool
+    to download the Chat Replay messages and metadata of Twitch VODs
+    for archival purposes.
+'''
 
-import requests
 import sys
-import calendar
 import time
-import math
 import json
+import argparse
+import requests
+
 
 CHUNK_ATTEMPTS = 6
 CHUNK_ATTEMPT_SLEEP = 10
 
-if len(sys.argv) < 2 or len(sys.argv) > 3:
-    print("usage:")
-    print("  rechat-dl.py VOD-ID [FILE]")
-    print("    VOD-ID: can be found in the vod url like this:")
-    print("    http://www.twitch.tv/streamername/v/{VOD-ID}")
-    print()
-    print("    FILE (optional): the file the chat messages will be saved into.")
-    print("    if not set, it's rechat-{VOD-ID}.json")
-    sys.exit(0)
-    
-messages = []
 
-cid = "isaxc3wjcarzh4vgvz11cslcthw0gw"
-vod_info = requests.get("https://api.twitch.tv/kraken/videos/v" + sys.argv[1], headers={"Client-ID": cid}).json()
+def progress(count, total, status=''):
+    '''
+    The gist here: https://gist.github.com/vladignatyev/06860ec2040cb497f0f3
+    '''
 
-file_name = "rechat-" + sys.argv[1] + ".json"
-if len(sys.argv) == 3:
-   file_name = sys.argv[2] 
+    bar_len = 60
+    filled_len = int(round(bar_len * count / float(total)))
 
-if "error" in vod_info:
-    sys.exit("got an error in vod info response: " + str(vod_info))
+    percents = round(100.0 * count / float(total), 1)
+    pbar = '=' * filled_len + '-' * (bar_len - filled_len)
 
-messages.append(vod_info)   # we store the vod metadata in the first element of the message array
+    sys.stdout.write('[%s] %s%s ...%s\r' % (pbar, percents, '%', status))
+    sys.stdout.flush()
 
-response = None
 
-print("downloading chat messages for vod " + sys.argv[1] + "...")
-while response == None or '_next' in response:
-    query = ('cursor=' + response['_next']) if response != None and '_next' in response else 'content_offset_seconds=0'
-    for i in range(0, CHUNK_ATTEMPTS):
-        error = None
-        try:
-            response = requests.get("https://api.twitch.tv/v5/videos/" + sys.argv[1] + "/comments?" + query, headers={"Client-ID": cid}).json()
-        except requests.exceptions.ConnectionError as e:
-            error = str(e)
-        else:
-            if "errors" in response or not "comments" in response:
-                error = "error received in chat message response: " + str(response)
-        
-        if error == None:
-            messages += response["comments"]
-            break
-        else:
-            print("\nerror while downloading chunk: " + error)
-            
-            if i < CHUNK_ATTEMPTS - 1:
-                    print("retrying in " + str(CHUNK_ATTEMPT_SLEEP) + " seconds ", end="")
-            print("(attempt " + str(i + 1) + "/" + str(CHUNK_ATTEMPTS) + ")")
-            
-            if i < CHUNK_ATTEMPTS - 1:
-                time.sleep(CHUNK_ATTEMPT_SLEEP)
-    
-    if error != None:
-        sys.exit("max retries exceeded.")
+def download(vod_id, file_name):
+    '''
+    get vod chat
+    '''
 
-print()
-print("saving to " + file_name)
+    messages = []
+    client_id = "isaxc3wjcarzh4vgvz11cslcthw0gw"
+    headers = {
+        "Client-ID": client_id,
+        "User-Agent": "Mozilla/5.0"
+        }
 
-f = open(file_name, "w")
-f.write(json.dumps(messages))
-f.close()
+    vod_info = requests.get("https://api.twitch.tv/kraken/videos/v" +
+                            vod_id, headers=headers).json()
 
-print("done!")
+    if "error" in vod_info:
+        sys.exit("got an error in vod info response: " + str(vod_info))
+
+    video_length = vod_info['length']
+
+# we store the vod metadata in the first element of the message array
+    messages.append(vod_info)
+
+    response = {'_next': ''}
+
+    print("Downloading chat messages for vod " + vod_id + "...")
+    while '_next' in response:
+
+        query = ('cursor=' + response['_next'])
+
+        for i in range(CHUNK_ATTEMPTS):
+            error = None
+            try:
+                response = requests.get("https://api.twitch.tv/v5/videos/" +
+                                        vod_id + "/comments?" + query,
+                                        headers=headers).json()
+            except requests.exceptions.ConnectionError as err:
+                error = str(err)
+            else:
+                if "errors" in response or "comments" not in response:
+                    error = "error received in chat message response: " + \
+                            str(response)
+
+            if error is None:
+                messages += response["comments"]
+                break
+            else:
+                print("\nerror while downloading chunk: " + error)
+
+                if i < CHUNK_ATTEMPTS - 1:
+                    print("retrying in " +
+                          str(CHUNK_ATTEMPT_SLEEP) +
+                          " seconds ", end="")
+                print("(attempt " + str(i + 1) +
+                      "/" + str(CHUNK_ATTEMPTS) + ")")
+
+                if i < CHUNK_ATTEMPTS - 1:
+                    time.sleep(CHUNK_ATTEMPT_SLEEP)
+
+        if error is not None:
+            sys.exit("max retries exceeded.")
+
+        comment_offset = response['comments'][len(
+            response['comments'])-1]["content_offset_seconds"]
+        progress(comment_offset, video_length, status="receiving...")
+
+    print("\nsaving to " + file_name)
+
+    with open(file_name, "w") as save_file:
+        save_file.write(json.dumps(messages))
+
+    print("done!")
+
+
+if __name__ == '__main__':
+    PARSER = argparse.ArgumentParser(description=__doc__)
+    PARSER.add_argument('vod_id', metavar='VOD-ID', help='''
+    can be found in the vod url like this:
+    http://www.twitch.tv/streamername/v/{VOD-ID}
+    ''')
+    PARSER.add_argument('file_name', metavar='FILE', nargs='?', help='''
+    FILE (optional): the file the chat messages will be saved into.
+    if not set, it's rechat-{VOD-ID}.json
+    ''')
+    ARGS = PARSER.parse_args(args=None if len(sys.argv) > 1 else ['--help'])
+    ARGS.file_name = ("rechat-" + ARGS.vod_id +
+                      ".json") if ARGS.file_name is None else ARGS.file_name
+    download(ARGS.vod_id, ARGS.file_name)
